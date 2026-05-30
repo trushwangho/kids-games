@@ -89,6 +89,9 @@
   .bigword { font-size:clamp(40px,13vw,96px); font-weight:800; color:#ffd98a;
     text-shadow:0 4px 0 #7a4a14; letter-spacing:8px; }
   #writePad { background:#fffdf5; border-radius:20px; border:4px solid #ffd24d; touch-action:none; }
+  #writePad.bad { border-color:#ff5a5a; animation:padshake 0.4s; }
+  @keyframes padshake { 0%,100%{transform:translateX(0)} 20%{transform:translateX(-10px)} 40%{transform:translateX(10px)} 60%{transform:translateX(-7px)} 80%{transform:translateX(7px)} }
+  #writeMsg.warn { color:#ff8a6a; font-weight:800; }
   .write-btns { display:flex; gap:14px; }
 </style>
 </head>
@@ -142,7 +145,7 @@
 
   <div id="writeScreen" class="screen hidden">
     <div class="gameover-title" id="writeHead">글씨 쓰기 시간!</div>
-    <p class="desc">아래 글씨를 손가락으로 따라 써봐요</p>
+    <p class="desc" id="writeMsg">아래 글씨를 손가락으로 따라 써봐요</p>
     <div class="bigword" id="writeWord">나무</div>
     <canvas id="writePad"></canvas>
     <div class="write-btns">
@@ -555,7 +558,11 @@
   const WORDS=["나무","바나나","사과","포도","토끼","호랑이","코끼리","자동차","비행기","강아지","고양이","딸기","수박","우산","모자","풍선","기차","물고기","거북이","공룡","로봇","사자","여우","오리","펭귄","버스","연필","사탕","구름","나비"];
   const writePad=document.getElementById("writePad");
   const wctx=writePad.getContext("2d");
-  let writeReason=null, padDrawing=false, curWord="";
+  // 오프스크린: 가이드 글자(판정 기준) + 사용자 잉크(판정 대상) 분리
+  const guideCv=document.createElement("canvas"), gctx=guideCv.getContext("2d");
+  const inkCv=document.createElement("canvas"), ictx=inkCv.getContext("2d");
+  let writeReason=null, padDrawing=false, curWord="", badCells=[];
+  let cellGuide=[];   // 칸별 가이드 픽셀 수
   function pickWord(){ return WORDS[(Math.random()*WORDS.length)|0]; }
   function setupPad(){
     // 가로폭 우선 2배. 단 화면 세로에 맞춰 잘리지 않게 제한.
@@ -565,32 +572,90 @@
     if(h>maxH){ h=maxH; size=h*2; }
     writePad.width=size; writePad.height=h;
     writePad.style.width=size+"px"; writePad.style.height=h+"px";
-    redrawPad();
+    guideCv.width=size; guideCv.height=h; inkCv.width=size; inkCv.height=h;
+    buildGuide();
+    ictx.clearRect(0,0,size,h);
+    badCells=[]; redrawPad();
+  }
+  function nCells(){ return Math.max(1, curWord.length); }
+  // 가이드 글자를 칸별로 1글자씩 그려 마스크 생성 + 칸별 픽셀 수 계산
+  function buildGuide(){
+    const W2=writePad.width, H2=writePad.height, n=nCells(), cw=W2/n;
+    gctx.clearRect(0,0,W2,H2);
+    gctx.fillStyle="#000"; gctx.textAlign="center"; gctx.textBaseline="middle";
+    gctx.font="800 "+Math.round(H2*0.66)+"px -apple-system,sans-serif";
+    for(let i=0;i<n;i++) gctx.fillText(curWord[i], cw*(i+0.5), H2/2);
+    const d=gctx.getImageData(0,0,W2,H2).data;
+    cellGuide=new Array(n).fill(0);
+    for(let y=0;y<H2;y++){ for(let x=0;x<W2;x++){
+      if(d[(y*W2+x)*4+3]>40){ const c=Math.min(n-1,(x/cw)|0); cellGuide[c]++; }
+    }}
   }
   function redrawPad(){
-    wctx.clearRect(0,0,writePad.width,writePad.height);
-    wctx.fillStyle="#fffdf5"; wctx.fillRect(0,0,writePad.width,writePad.height);
-    wctx.fillStyle="rgba(120,90,50,0.18)"; wctx.textAlign="center"; wctx.textBaseline="middle";
-    wctx.font="800 "+Math.round(writePad.height*0.62)+"px -apple-system,sans-serif";
-    wctx.fillText(curWord, writePad.width/2, writePad.height/2);
+    const W2=writePad.width, H2=writePad.height, n=nCells(), cw=W2/n;
+    wctx.clearRect(0,0,W2,H2);
+    wctx.fillStyle="#fffdf5"; wctx.fillRect(0,0,W2,H2);
+    // 칸 구분선
+    wctx.strokeStyle="rgba(120,90,50,0.25)"; wctx.lineWidth=2; wctx.setLineDash([8,8]);
+    for(let i=1;i<n;i++){ wctx.beginPath(); wctx.moveTo(cw*i,8); wctx.lineTo(cw*i,H2-8); wctx.stroke(); }
+    wctx.setLineDash([]);
+    // 부족한 칸 빨간 배경 강조
+    for(const c of badCells){ wctx.fillStyle="rgba(255,90,90,0.12)"; wctx.fillRect(cw*c,0,cw,H2); }
+    // 회색 가이드 글자(연하게)
+    wctx.globalAlpha=0.20; wctx.drawImage(guideCv,0,0); wctx.globalAlpha=1;
+    // 사용자 잉크
+    wctx.drawImage(inkCv,0,0);
   }
   function openWrite(reason){
     writeReason=reason; curWord=pickWord();
     document.getElementById("writeWord").textContent=curWord;
     document.getElementById("writeHead").textContent = reason==="death" ? "마지막 글씨 쓰기!" : "글씨 쓰기 시간!";
+    setMsg("아래 글씨를 손가락으로 따라 써봐요", false);
     state="writing"; hud.classList.add("hidden"); skillbar.classList.add("hidden");
     show(writeScreen); setupPad(); sndReady();
   }
+  function setMsg(t,warn){ const m=document.getElementById("writeMsg"); m.textContent=t; m.classList.toggle("warn",!!warn); }
+  // 검증: 각 칸이 (1)충분히 칠해짐 (2)가이드 위를 여유롭게 덮음 — 둘 다 만족해야 통과
+  function validateWriting(){
+    const W2=writePad.width, H2=writePad.height, n=nCells(), cw=W2/n;
+    const ink=ictx.getImageData(0,0,W2,H2).data, gd=gctx.getImageData(0,0,W2,H2).data;
+    const inkCell=new Array(n).fill(0), overlap=new Array(n).fill(0);
+    for(let y=0;y<H2;y++){ for(let x=0;x<W2;x++){
+      const a=ink[(y*W2+x)*4+3];
+      if(a>40){ const c=Math.min(n-1,(x/cw)|0); inkCell[c]++; if(gd[(y*W2+x)*4+3]>40) overlap[c]++; }
+    }}
+    const bad=[];
+    for(let i=0;i<n;i++){
+      const g=Math.max(1,cellGuide[i]);
+      const enough = inkCell[i] >= g*0.30;        // 충분히 칠함
+      const onGuide = overlap[i] >= g*0.22;       // 가이드 위 여유롭게 덮음
+      if(!(enough && onGuide)) bad.push(i);
+    }
+    return bad;
+  }
+  function tryDone(){
+    const bad=validateWriting();
+    if(bad.length===0){ closeWrite(); return; }
+    badCells=bad; redrawPad();
+    setMsg(bad.length===nCells()? "글씨를 써야 넘어갈 수 있어요!" : "조금 더 또박또박 써볼까요?", true);
+    writePad.classList.remove("bad"); void writePad.offsetWidth; writePad.classList.add("bad");
+    sndLose();
+  }
   function closeWrite(){
+    writePad.classList.remove("bad");
     if(writeReason==="death"){ doGameOver(); }
     else { show(null); hud.classList.remove("hidden"); skillbar.classList.remove("hidden"); state="play"; lastTime=0; }
   }
+  function clearInk(){ ictx.clearRect(0,0,inkCv.width,inkCv.height); badCells=[]; setMsg("아래 글씨를 손가락으로 따라 써봐요",false); redrawPad(); }
   function padPos(ev){ const r=writePad.getBoundingClientRect();
     const t=(ev.touches&&ev.touches[0])||(ev.changedTouches&&ev.changedTouches[0])||ev;
     return { x:(t.clientX-r.left)*(writePad.width/r.width), y:(t.clientY-r.top)*(writePad.height/r.height) }; }
-  function padStart(ev){ ev.preventDefault(); padDrawing=true; const p=padPos(ev); wctx.beginPath(); wctx.moveTo(p.x,p.y); }
+  let lastP=null;
+  function padStart(ev){ ev.preventDefault(); padDrawing=true; lastP=padPos(ev);
+    ictx.beginPath(); ictx.arc(lastP.x,lastP.y,5.5,0,6.28); ictx.fillStyle="#7a4a1a"; ictx.fill(); redrawPad(); }
   function padMove(ev){ if(!padDrawing) return; ev.preventDefault(); const p=padPos(ev);
-    wctx.strokeStyle="#7a4a1a"; wctx.lineWidth=11; wctx.lineCap="round"; wctx.lineJoin="round"; wctx.lineTo(p.x,p.y); wctx.stroke(); }
+    ictx.strokeStyle="#7a4a1a"; ictx.lineWidth=11; ictx.lineCap="round"; ictx.lineJoin="round";
+    ictx.beginPath(); ictx.moveTo(lastP.x,lastP.y); ictx.lineTo(p.x,p.y); ictx.stroke(); lastP=p; redrawPad(); }
   function padEnd(){ padDrawing=false; }
   writePad.addEventListener("touchstart",padStart,{passive:false});
   writePad.addEventListener("touchmove",padMove,{passive:false});
@@ -598,8 +663,8 @@
   writePad.addEventListener("mousedown",padStart);
   writePad.addEventListener("mousemove",padMove);
   window.addEventListener("mouseup",padEnd);
-  document.getElementById("writeClear").addEventListener("click",redrawPad);
-  document.getElementById("writeDone").addEventListener("click",closeWrite);
+  document.getElementById("writeClear").addEventListener("click",clearInk);
+  document.getElementById("writeDone").addEventListener("click",tryDone);
 
   function startGame(level){
     cfg=DIFF[level]; tower=0; hearts=cfg.hearts; maxHearts=cfg.hearts; killCount=0; charges=0;
