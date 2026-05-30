@@ -81,6 +81,11 @@
     font-size:11px; color:#ffd98a; font-weight:700; }
 
   .credit { position:absolute; bottom:14px; font-size:13px; color:#8a7a5a; }
+
+  .bigword { font-size:clamp(40px,13vw,96px); font-weight:800; color:#ffd98a;
+    text-shadow:0 4px 0 #7a4a14; letter-spacing:8px; }
+  #writePad { background:#fffdf5; border-radius:20px; border:4px solid #ffd24d; touch-action:none; }
+  .write-btns { display:flex; gap:14px; }
 </style>
 </head>
 <body>
@@ -101,7 +106,7 @@
 
   <div id="startScreen" class="screen">
     <h1>해골 궁수<span class="sub">화살로 괴물을 막아요</span></h1>
-    <p class="desc">불 켜진 동굴 앞에 해골 궁수가 서 있어요.<br>다가오는 괴물을 손가락으로 톡 누르면 화살이 날아가요!<br>5마리 잡을 때마다 아래 마법 버튼이 켜져요. 불비·얼음·해골폭발 중 골라 쓰세요.</p>
+    <p class="desc">불 켜진 동굴 앞에 해골 궁수가 서 있어요.<br>다가오는 괴물을 손가락으로 톡 누르면 화살이 날아가요!<br>탑이 20칸 오를 때마다 마법 버튼이 켜져요. 50칸마다 글씨 쓰기, 100칸마다 보스가 나와요!</p>
     <div class="pmode">
       <button class="pbtn on" data-p="1">1명</button>
       <button class="pbtn" data-p="2">2명이 같이</button>
@@ -126,6 +131,17 @@
     <div class="big" id="finalTower">탑 0칸</div>
     <button class="again" id="restartBtn">다시 하기</button>
     <button class="again" id="homeBtn" style="background:linear-gradient(#ffd24d,#f5a623)">처음으로</button>
+  </div>
+
+  <div id="writeScreen" class="screen hidden">
+    <div class="gameover-title" id="writeHead">글씨 쓰기 시간!</div>
+    <p class="desc">아래 글씨를 손가락으로 따라 써봐요</p>
+    <div class="bigword" id="writeWord">나무</div>
+    <canvas id="writePad"></canvas>
+    <div class="write-btns">
+      <button class="again" id="writeClear" style="background:linear-gradient(#ffd24d,#f5a623)">지우기</button>
+      <button class="again" id="writeDone">다 썼어요</button>
+    </div>
   </div>
 </div>
 
@@ -186,6 +202,7 @@
 
   let state="menu", cfg=null;
   let tower=0, hearts=0, maxHearts=0, killCount=0, charges=0;
+  let lastSkillTower=0, lastBossTower=0, lastWriteTower=0, bossLevel=0, pendingWrite=false;
   let enemies=[], arrows=[], bones=[], pops=[], embers=[], fx=[];
   let spawnTimer=0, elapsed=0, speedMul=1, lastTime=0, freezeTimer=0;
   let archers=[];           // 하단 궁수 1~2명 [{x,y}]
@@ -223,8 +240,8 @@
     if(state!=="play"||!archers.length) return;
     const a=nearestArcher(px);
     const dx=px-a.x, dy=py-a.y, d=Math.hypot(dx,dy)||1;
-    const sp=620;
-    arrows.push({ x:a.x, y:a.y-20, vx:dx/d*sp, vy:dy/d*sp, life:2.2, ang:Math.atan2(dy,dx) });
+    const sp=434;   // 화살 속도 (이전 620 에서 30% 감속)
+    arrows.push({ x:a.x, y:a.y-20, vx:dx/d*sp, vy:dy/d*sp, life:3.4, ang:Math.atan2(dy,dx) });
     sndShoot();
   }
 
@@ -236,10 +253,26 @@
       tower+=e.m.pts; killCount++;
       popText(e.x,e.y,"+"+e.m.pts);
       sndStack();
-      // 5마리마다 스킬 1충전
-      if(killCount % 5 === 0){ charges=Math.min(charges+1,3); sndReady(); }
+      checkMilestones();
       updateHud();
     } else { sndBoss(); }
+  }
+
+  // 탑 칸수 기준 이벤트: 스킬 충전(20칸) · 보스(100칸) · 글씨쓰기(50칸)
+  function checkMilestones(){
+    while(tower - lastSkillTower >= 20){ lastSkillTower += 20; charges=Math.min(charges+1,3); sndReady(); }
+    while(tower - lastBossTower >= 100){ lastBossTower += 100; bossLevel++; spawnBoss(); }
+    while(tower >= lastWriteTower + 50){ lastWriteTower += 50; pendingWrite=true; }
+  }
+
+  function spawnBoss(){
+    const lv=bossLevel;
+    const r=44+lv*5;
+    enemies.push({ x:area.x+area.w*0.5, y:area.y-50,
+      m:{name:"보스",col:"#4a3a6a",shape:"horn",sp:0.5,r:r,hp:0,pts:15+lv*5},
+      r:r, hp:6+lv*3, maxhp:6+lv*3, speed:cfg.speed*speedMul*0.42, wob:0, hitFlash:0, vx:0, boss:true });
+    popText(area.x+area.w*0.5, area.y+40, "보스 "+lv);
+    sndBoss();
   }
 
   function spawnBones(x,y,n){
@@ -270,6 +303,7 @@
 
   // ----- 업데이트 -----
   function update(dt){
+    if(pendingWrite){ pendingWrite=false; openWrite("milestone"); return; }
     elapsed+=dt; speedMul=1+elapsed*cfg.ramp;
     if(freezeTimer>0) freezeTimer-=dt;
 
@@ -299,7 +333,7 @@
       if(e.y >= floorY()-8){
         enemies.splice(i,1); hearts--; popText(e.x,floorY()-40,"-1"); sndLose(); updateHud();
         fx.push({type:"shake",life:0.3});
-        if(hearts<=0){ gameOver(); return; }
+        if(hearts<=0){ openWrite("death"); return; }
       }
     }
 
@@ -505,21 +539,70 @@
   const startScreen=document.getElementById("startScreen");
   const pauseScreen=document.getElementById("pauseScreen");
   const overScreen=document.getElementById("overScreen");
-  function show(el){ [startScreen,pauseScreen,overScreen].forEach(s=>s.classList.add("hidden")); if(el) el.classList.remove("hidden"); }
+  const writeScreen=document.getElementById("writeScreen");
+  function show(el){ [startScreen,pauseScreen,overScreen,writeScreen].forEach(s=>s.classList.add("hidden")); if(el) el.classList.remove("hidden"); }
+
+  // ----- 글씨 쓰기 미니게임 -----
+  const WORDS=["나무","바나나","사과","포도","토끼","호랑이","코끼리","자동차","비행기","강아지","고양이","딸기","수박","우산","모자","풍선","기차","물고기","거북이","공룡","로봇","사자","여우","오리","펭귄","버스","연필","사탕","구름","나비"];
+  const writePad=document.getElementById("writePad");
+  const wctx=writePad.getContext("2d");
+  let writeReason=null, padDrawing=false, curWord="";
+  function pickWord(){ return WORDS[(Math.random()*WORDS.length)|0]; }
+  function setupPad(){
+    const size=Math.min(window.innerWidth*0.82,380);
+    writePad.width=size; writePad.height=Math.round(size*0.5);
+    writePad.style.width=size+"px"; writePad.style.height=Math.round(size*0.5)+"px";
+    redrawPad();
+  }
+  function redrawPad(){
+    wctx.clearRect(0,0,writePad.width,writePad.height);
+    wctx.fillStyle="#fffdf5"; wctx.fillRect(0,0,writePad.width,writePad.height);
+    wctx.fillStyle="rgba(120,90,50,0.18)"; wctx.textAlign="center"; wctx.textBaseline="middle";
+    wctx.font="800 "+Math.round(writePad.height*0.62)+"px -apple-system,sans-serif";
+    wctx.fillText(curWord, writePad.width/2, writePad.height/2);
+  }
+  function openWrite(reason){
+    writeReason=reason; curWord=pickWord();
+    document.getElementById("writeWord").textContent=curWord;
+    document.getElementById("writeHead").textContent = reason==="death" ? "마지막 글씨 쓰기!" : "글씨 쓰기 시간!";
+    state="writing"; hud.classList.add("hidden"); skillbar.classList.add("hidden");
+    show(writeScreen); setupPad(); sndReady();
+  }
+  function closeWrite(){
+    if(writeReason==="death"){ doGameOver(); }
+    else { show(null); hud.classList.remove("hidden"); skillbar.classList.remove("hidden"); state="play"; lastTime=0; }
+  }
+  function padPos(ev){ const r=writePad.getBoundingClientRect();
+    const t=(ev.touches&&ev.touches[0])||(ev.changedTouches&&ev.changedTouches[0])||ev;
+    return { x:(t.clientX-r.left)*(writePad.width/r.width), y:(t.clientY-r.top)*(writePad.height/r.height) }; }
+  function padStart(ev){ ev.preventDefault(); padDrawing=true; const p=padPos(ev); wctx.beginPath(); wctx.moveTo(p.x,p.y); }
+  function padMove(ev){ if(!padDrawing) return; ev.preventDefault(); const p=padPos(ev);
+    wctx.strokeStyle="#7a4a1a"; wctx.lineWidth=11; wctx.lineCap="round"; wctx.lineJoin="round"; wctx.lineTo(p.x,p.y); wctx.stroke(); }
+  function padEnd(){ padDrawing=false; }
+  writePad.addEventListener("touchstart",padStart,{passive:false});
+  writePad.addEventListener("touchmove",padMove,{passive:false});
+  writePad.addEventListener("touchend",padEnd);
+  writePad.addEventListener("mousedown",padStart);
+  writePad.addEventListener("mousemove",padMove);
+  window.addEventListener("mouseup",padEnd);
+  document.getElementById("writeClear").addEventListener("click",redrawPad);
+  document.getElementById("writeDone").addEventListener("click",closeWrite);
 
   function startGame(level){
     cfg=DIFF[level]; tower=0; hearts=cfg.hearts; maxHearts=cfg.hearts; killCount=0; charges=0;
+    lastSkillTower=0; lastBossTower=0; lastWriteTower=0; bossLevel=0; pendingWrite=false; writeReason=null;
     enemies=[]; arrows=[]; bones=[]; pops=[]; embers=[]; fx=[];
     spawnTimer=0.8; elapsed=0; speedMul=1; lastTime=0; freezeTimer=0;
     layout();
     updateHud(); hud.classList.remove("hidden"); skillbar.classList.remove("hidden");
     show(null); state="play"; sndStart();
   }
-  function gameOver(){
+  function doGameOver(){
     state="over"; hud.classList.add("hidden"); skillbar.classList.add("hidden");
     document.getElementById("finalTower").textContent="탑 "+tower+"칸";
-    let msg; if(tower>=40) msg="우와! 하늘까지 닿는 탑이다!";
-    else if(tower>=20) msg="정말 높이 쌓았어요!";
+    let msg; if(tower>=100) msg="우와! 구름을 뚫었어요!";
+    else if(tower>=50) msg="대단해요! 정말 높은 탑!";
+    else if(tower>=20) msg="좋아요! 높이 쌓았어요!";
     else if(tower>=8) msg="좋아요! 한 번 더 쌓아볼까요?";
     else msg="다시 도전!";
     document.getElementById("overMsg").textContent=msg; show(overScreen); sndOver();
