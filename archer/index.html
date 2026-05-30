@@ -558,9 +558,13 @@
   let writeReason=null, padDrawing=false, curWord="";
   function pickWord(){ return WORDS[(Math.random()*WORDS.length)|0]; }
   function setupPad(){
-    const size=Math.min(window.innerWidth*0.82,380);
-    writePad.width=size; writePad.height=Math.round(size*0.5);
-    writePad.style.width=size+"px"; writePad.style.height=Math.round(size*0.5)+"px";
+    // 가로폭 우선 2배. 단 화면 세로에 맞춰 잘리지 않게 제한.
+    let size=Math.min(window.innerWidth*0.94,760);
+    let h=Math.round(size*0.5);
+    const maxH=Math.round(window.innerHeight*0.52);
+    if(h>maxH){ h=maxH; size=h*2; }
+    writePad.width=size; writePad.height=h;
+    writePad.style.width=size+"px"; writePad.style.height=h+"px";
     redrawPad();
   }
   function redrawPad(){
