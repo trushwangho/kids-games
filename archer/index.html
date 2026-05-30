@@ -32,6 +32,12 @@
   .hard { background:linear-gradient(#ff8a5c,#ef5a32); }
   .lvl small { display:block; font-size:13px; font-weight:600; opacity:.8; margin-top:4px; }
 
+  .pmode { display:flex; gap:12px; }
+  .pbtn { font-family:inherit; font-weight:800; font-size:clamp(16px,4vw,20px); color:#e8d6b0;
+    background:rgba(255,255,255,0.08); border:3px solid rgba(255,255,255,0.2);
+    border-radius:18px; padding:12px 22px; cursor:pointer; }
+  .pbtn.on { color:#1a1208; background:linear-gradient(#ffe7b0,#ffcf8a); border-color:#ffd24d; }
+
   button.again { font-family:inherit; font-weight:800; font-size:clamp(20px,5vw,26px);
     color:#1a1208; background:linear-gradient(#a8f06a,#7bd13e); border:none; border-radius:22px;
     padding:16px 40px; cursor:pointer; box-shadow:0 6px 0 rgba(0,0,0,0.4); }
@@ -96,6 +102,10 @@
   <div id="startScreen" class="screen">
     <h1>해골 궁수<span class="sub">화살로 괴물을 막아요</span></h1>
     <p class="desc">불 켜진 동굴 앞에 해골 궁수가 서 있어요.<br>다가오는 괴물을 손가락으로 톡 누르면 화살이 날아가요!<br>5마리 잡을 때마다 아래 마법 버튼이 켜져요. 불비·얼음·해골폭발 중 골라 쓰세요.</p>
+    <div class="pmode">
+      <button class="pbtn on" data-p="1">1명</button>
+      <button class="pbtn" data-p="2">2명이 같이</button>
+    </div>
     <div class="btn-row">
       <button class="lvl easy" data-lvl="easy">쉬움<small>천천히, 느긋하게</small></button>
       <button class="lvl mid"  data-lvl="mid">중간<small>좀 더 많고 빨라요</small></button>
@@ -178,13 +188,22 @@
   let tower=0, hearts=0, maxHearts=0, killCount=0, charges=0;
   let enemies=[], arrows=[], bones=[], pops=[], embers=[], fx=[];
   let spawnTimer=0, elapsed=0, speedMul=1, lastTime=0, freezeTimer=0;
-  let archer=null;          // 하단 중앙 궁수 {x,y}
+  let archers=[];           // 하단 궁수 1~2명 [{x,y}]
+  let numPlayers=1;
   let area={x:0,y:0,w:0,h:0};
 
+  function floorY(){ return area.y+area.h-6; }
   function layout(){
     const topPad=Math.max(70,H*0.13), botPad=Math.max(110,H*0.17);
     area={ x:14, y:topPad, w:W-28, h:H-topPad-botPad };
-    archer={ x:W*0.5, y:area.y+area.h-6 };
+    const fy=floorY();
+    if(numPlayers===2) archers=[{x:W*0.27,y:fy},{x:W*0.73,y:fy}];
+    else archers=[{x:W*0.5,y:fy}];
+  }
+  function nearestArcher(px){
+    let best=archers[0], bd=1e9;
+    for(const a of archers){ const d=Math.abs(px-a.x); if(d<bd){ bd=d; best=a; } }
+    return best;
   }
 
   // ----- 적 생성 -----
@@ -201,10 +220,11 @@
 
   // ----- 입력: 적을 탭하면 화살 발사 -----
   function shootAt(px,py){
-    if(state!=="play"||!archer) return;
-    const dx=px-archer.x, dy=py-archer.y, d=Math.hypot(dx,dy)||1;
+    if(state!=="play"||!archers.length) return;
+    const a=nearestArcher(px);
+    const dx=px-a.x, dy=py-a.y, d=Math.hypot(dx,dy)||1;
     const sp=620;
-    arrows.push({ x:archer.x, y:archer.y-20, vx:dx/d*sp, vy:dy/d*sp, life:2.2, ang:Math.atan2(dy,dx) });
+    arrows.push({ x:a.x, y:a.y-20, vx:dx/d*sp, vy:dy/d*sp, life:2.2, ang:Math.atan2(dy,dx) });
     sndShoot();
   }
 
@@ -242,7 +262,7 @@
       fx.push({type:"ice",life:0.9});
     } else if(kind==="boom"){
       // 해골폭발: 궁수 가까운 적부터 큰 폭발, 모두 강타
-      fx.push({type:"boom", x:archer.x, y:area.y+area.h*0.5, life:0.6, rad:0});
+      fx.push({type:"boom", x:W*0.5, y:area.y+area.h*0.5, life:0.6, rad:0});
       for(let i=enemies.length-1;i>=0;i--){ damageEnemy(i, 3); }
     }
     sndSkill(); updateSkillBar();
@@ -276,8 +296,8 @@
         if(e.x>area.x+area.w-e.r){ e.x=area.x+area.w-e.r; e.vx*=-1; }
       }
       // 바닥(궁수 라인) 도달 → 하트 감소
-      if(e.y >= archer.y-8){
-        enemies.splice(i,1); hearts--; popText(archer.x,archer.y-40,"-1"); sndLose(); updateHud();
+      if(e.y >= floorY()-8){
+        enemies.splice(i,1); hearts--; popText(e.x,floorY()-40,"-1"); sndLose(); updateHud();
         fx.push({type:"shake",life:0.3});
         if(hearts<=0){ gameOver(); return; }
       }
@@ -318,7 +338,7 @@
 
     for(const e of enemies) drawEnemy(e);
     for(const a of arrows) drawArrow(a);
-    drawArcher(archer);
+    for(const a of archers) drawArcher(a);
     for(const b of bones) drawBone(b);
 
     // fx
@@ -514,6 +534,10 @@
     const r=canvas.getBoundingClientRect(); shootAt(ev.clientX-r.left,ev.clientY-r.top); });
 
   let _lastLevel="easy";
+  document.querySelectorAll(".pbtn").forEach(b=>{
+    b.addEventListener("click",()=>{ numPlayers=parseInt(b.getAttribute("data-p"),10);
+      document.querySelectorAll(".pbtn").forEach(x=>x.classList.toggle("on", x===b)); });
+  });
   document.querySelectorAll("button.lvl").forEach(b=>{
     b.addEventListener("click",()=>{ audio(); _lastLevel=b.getAttribute("data-lvl"); startGame(_lastLevel); });
   });
