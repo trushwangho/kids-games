@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>게임 고르기</title>
+<link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Crect width='180' height='180' rx='40' fill='%231a1208'/%3E%3Ccircle cx='90' cy='80' r='44' fill='%23ffcf8a'/%3E%3Ccircle cx='74' cy='76' r='10' fill='%231a1208'/%3E%3Ccircle cx='106' cy='76' r='10' fill='%231a1208'/%3E%3Crect x='80' y='110' width='8' height='24' fill='%23ffcf8a'/%3E%3Crect x='92' y='110' width='8' height='24' fill='%23ffcf8a'/%3E%3C/svg%3E">
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html,body { width:100%; min-height:100%; background:#120c06;
+    font-family:-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Pretendard",sans-serif;
+    color:#fff; -webkit-user-select:none; user-select:none; }
+  .page { min-height:100vh; display:flex; flex-direction:column; align-items:center;
+    justify-content:center; text-align:center; gap:30px; padding:40px 20px;
+    background:radial-gradient(circle at 50% 30%, #3a2a1a 0%, #1a1208 70%, #120c06 100%); }
+  h1 { font-size:clamp(32px,9vw,60px); font-weight:800; color:#ffd98a;
+    text-shadow:0 4px 0 #7a4a14, 0 0 30px rgba(255,160,40,0.4); }
+  .lead { font-size:clamp(15px,4vw,20px); color:#e8d6b0; }
+  .cards { display:flex; flex-direction:column; gap:20px; width:min(90vw,420px); }
+  a.card { display:block; text-decoration:none; color:#1a1208; border-radius:26px;
+    padding:28px 20px; font-weight:800; font-size:clamp(22px,6vw,30px);
+    box-shadow:0 7px 0 rgba(0,0,0,0.4); transition:transform .06s, box-shadow .06s; }
+  a.card:active { transform:translateY(5px); box-shadow:0 2px 0 rgba(0,0,0,0.4); }
+  a.card small { display:block; font-size:14px; font-weight:600; opacity:.8; margin-top:6px; }
+  .zombie { background:linear-gradient(#a8f06a,#7bd13e); }
+  .archer { background:linear-gradient(#ffd24d,#f5a623); }
+  .tip { font-size:13px; color:#8a7a5a; max-width:340px; line-height:1.6; }
+</style>
+</head>
+<body>
+<div class="page">
+  <h1>게임 고르기</h1>
+  <p class="lead">하고 싶은 게임을 눌러요</p>
+  <div class="cards">
+    <a class="card zombie" href="./zombie/">좀비 막기<small>다가오는 좀비를 톡! 톡!</small></a>
+    <a class="card archer" href="./archer/">해골 궁수<small>화살 쏘고 마법으로 막기</small></a>
+  </div>
+  <p class="tip">팁: 사파리 아래 공유 버튼 → "홈 화면에 추가"를 누르면 아이콘이 생겨서 다음부터 바로 들어올 수 있어요.</p>
+</div>
+</body>
+</html>
