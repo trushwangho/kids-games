@@ -1108,30 +1108,29 @@
     const w=pickWord(); writeWord=[...w]; writeIdx=0; writeCtxs=[]; writeMarked=[];
     const row=document.getElementById("wordRow"); row.innerHTML="";
     document.getElementById("writeTitle").textContent="성문에 \""+w+"\" 쓰기";
-    // 칸 크기 — 화면 폭에 맞춰 최대로 (글자 수만큼 가로로 채움)
+    // 칸 크기 — 화면 폭에 맞춰 최대로 (1.5배 키움)
     const n=writeWord.length, gap=10;
-    let cellPx = Math.min((W - 24 - gap*(n-1))/n, H*0.34, 240);
+    let cellPx = Math.min((W - 16 - gap*(n-1))/n, H*0.5, 360);
     cellPx = Math.max(64, cellPx);
     row.style.gap = gap+"px";
+    show(writeScreen); hudShow(false);   // 먼저 표시 — 레이아웃 확정 후 캔버스를 정확한 크기로 설정
     writeWord.forEach((ch,i)=>{
       const cell=document.createElement("div"); cell.className="wcell";
       cell.style.width=cellPx+"px"; cell.style.height=cellPx+"px";
       const c=document.createElement("canvas"); cell.appendChild(c); row.appendChild(cell);
       writeMarked.push(false);
-      setupCell(c, ch, i, cell);
+      setupCell(c, ch, i, cell, cellPx);
     });
     refreshWriteDone();
-    show(writeScreen); hudShow(false);
     sndDing();
     startSpeak();   // 단어를 소리로 읽어주고 3초마다 반복
   }
-  function setupCell(c, ch, idx, cell){
-    const size=c.getBoundingClientRect();
+  function setupCell(c, ch, idx, cell, cellPx){
     const dpr=Math.min(window.devicePixelRatio||1,2);
-    const px=c.clientWidth||100, py=c.clientHeight||100;
+    const px=cellPx, py=cellPx;   // 표시 크기와 동일하게 고정 — 손가락 위치와 그려지는 위치 일치
     c.width=px*dpr; c.height=py*dpr;
     const cx=c.getContext("2d",{willReadFrequently:true}); cx.scale(dpr,dpr);
-    cx._w=px; cx._h=py; cx._ink=0; cx._guideHit=0; cx._guideTotal=0;
+    cx._w=px; cx._h=py; cx._ink=0;
     drawGuide(cx, ch);
     writeCtxs[idx]={cx, ch, cell};
     // 그리기 입력
@@ -1153,7 +1152,7 @@
     cx.fillText(ch, cx._w/2, cx._h*0.54);
   }
   function stroke(cx,x0,y0,x1,y1){
-    cx.strokeStyle="#2a2a2a"; cx.lineWidth=cx._h*0.16; cx.lineCap="round"; cx.lineJoin="round";
+    cx.strokeStyle="#2a2a2a"; cx.lineWidth=cx._h*0.08; cx.lineCap="round"; cx.lineJoin="round";
     cx.beginPath(); cx.moveTo(x0,y0); cx.lineTo(x1,y1); cx.stroke();
     cx._ink += Math.hypot(x1-x0,y1-y0)+1;
   }
@@ -1161,9 +1160,9 @@
   function checkCell(idx){
     const o=writeCtxs[idx]; if(!o) return;
     const cx=o.cx;
-    const need = (cx._w+cx._h)*1.1;     // 최소 획 길이
+    const need = (cx._w+cx._h)*1.0;     // 최소 획 길이
     const cover = guideCoverage(cx);
-    const ok = cx._ink>=need && cover>=0.40;
+    const ok = cx._ink>=need && cover>=0.20;   // 획이 얇아진 만큼 관대하게
     if(ok && !writeMarked[idx]){ writeMarked[idx]=true; o.cell.classList.add("done"); sndShoot(); }
     if(!ok && writeMarked[idx]){ writeMarked[idx]=false; o.cell.classList.remove("done"); }
     refreshWriteDone();
