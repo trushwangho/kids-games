@@ -7,11 +7,13 @@
 <style>
   * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
   html, body {
-    width:100%; height:100%; overflow:hidden; background:#16203a;
+    width:100%; height:100%; overflow:hidden; background:#000;
     font-family:-apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Pretendard", sans-serif;
     user-select:none; -webkit-user-select:none; touch-action:manipulation;
   }
-  #wrap { position:relative; width:100vw; height:100vh; }
+  body { display:flex; align-items:center; justify-content:center; }
+  /* 세로 프레임 — 크기는 JS가 화면에 맞춰 3:4로 지정. 가로로 돌려도 세로 박스 유지 */
+  #wrap { position:relative; width:100vw; height:100vh; background:#16203a; overflow:hidden; }
   canvas#game { display:block; width:100%; height:100%; touch-action:none; }
 
   .screen {
@@ -87,7 +89,7 @@
   #ultBtn .small, #nextWaveBtn .small { font-size:11px; font-weight:700; opacity:.85; }
 
   /* 포탑 관리 팝업 */
-  #manage { position:absolute; z-index:14; transform:translate(-50%,-120%);
+  #manage { position:absolute; z-index:14;
             background:rgba(12,18,34,0.95); border:2px solid rgba(255,255,255,0.25);
             border-radius:18px; padding:10px; display:flex; gap:8px; }
   #manage button { font-family:inherit; font-weight:800; cursor:pointer; border:none;
@@ -114,7 +116,7 @@
   #writeScreen h2 { font-size:clamp(22px,6vw,40px); font-weight:800; color:#ffe14d; }
   #writeScreen .wdesc { font-size:clamp(13px,3.4vw,18px); color:#ffeaa6; line-height:1.5; padding:0 18px; max-width:560px; }
   #wordRow { display:flex; gap:10px; }
-  .wcell { position:relative; width:clamp(76px,20vw,120px); height:clamp(76px,20vw,120px); }
+  .wcell { position:relative; }   /* 크기는 JS가 화면 폭에 맞춰 최대로 지정 */
   .wcell canvas { position:absolute; inset:0; width:100%; height:100%;
                   background:#fff8e6; border:4px solid #c79a3a; border-radius:18px; touch-action:none; }
   .wcell.done canvas { border-color:#7bd13e; background:#eaffe0; }
@@ -157,7 +159,7 @@
   <!-- 시작 화면 -->
   <div id="startScreen" class="screen">
     <h1>신윤복의 포탑게임<span class="sub">포탑을 세워 괴물을 막아요</span></h1>
-    <p class="desc">괴물들이 길을 따라 우리 성으로 걸어와요.<br>받침대를 눌러 포탑을 세우면 자동으로 화살을 쏴요.<br>괴물을 잡으면 동전이 모이고, 동전으로 더 센 포탑을 세워요!<br>보스가 오기 전엔 성문에 글씨를 써야 해요.</p>
+    <p class="desc">괴물들이 길을 따라 우리 성으로 걸어와요.<br>받침대를 눌러 포탑을 세우면 자동으로 화살을 쏴요.<br>괴물을 잡으면 동전이 모이고, 동전으로 더 센 포탑을 세워요!<br>두 판을 깰 때마다 성문에 글씨를 쓰고 보너스를 받아요.</p>
     <div class="btn-row">
       <button class="lvl easy" data-lvl="easy">쉬움<small>천천히 오는 괴물, 동전 넉넉</small></button>
       <button class="lvl mid"  data-lvl="mid">중간<small>좀 더 빠르고 많아져요</small></button>
@@ -198,6 +200,18 @@
       <button id="wDone">다 썼어요</button>
     </div>
   </div>
+
+  <!-- 팔기 확인 -->
+  <div id="sellConfirm" class="screen hidden" style="z-index:25; background:rgba(8,12,24,0.8);">
+    <div style="background:rgba(18,26,46,0.96); border:2px solid rgba(255,255,255,0.25); border-radius:24px; padding:30px 28px; display:flex; flex-direction:column; align-items:center; gap:18px;">
+      <div style="font-size:clamp(22px,6vw,34px); font-weight:800; color:#fff;">포탑을 팔까요?</div>
+      <div id="sellGain" style="font-size:clamp(18px,5vw,26px); font-weight:800; color:#ffe14d; font-variant-numeric:tabular-nums;">+20 동전</div>
+      <div style="display:flex; gap:14px; margin-top:4px;">
+        <button class="again" id="sellYes">네, 팔아요</button>
+        <button class="again" id="sellNo" style="background:linear-gradient(#dfe6f2,#b9c4d8)">아니요</button>
+      </div>
+    </div>
+  </div>
 </div>
 
 <script>
@@ -206,16 +220,24 @@
   const canvas = document.getElementById("game");
   const ctx = canvas.getContext("2d");
 
+  const wrap=document.getElementById("wrap");
+  const PORTRAIT_AR = 3/4;   // 세로 프레임 가로:세로 비율
   let W=0, H=0, DPR=1;
   function resize(){
     DPR = Math.min(window.devicePixelRatio||1, 2);
-    W = window.innerWidth; H = window.innerHeight;
+    // 화면에 들어가는 최대 3:4 세로 박스 (가로로 돌려도 세로 유지, 양옆 레터박스)
+    const vw=window.innerWidth, vh=window.innerHeight;
+    let h=vh, w=h*PORTRAIT_AR;
+    if(w>vw){ w=vw; h=w/PORTRAIT_AR; }
+    wrap.style.width=w+"px"; wrap.style.height=h+"px";
+    W=w; H=h;
     canvas.width = W*DPR; canvas.height = H*DPR;
     canvas.style.width = W+"px"; canvas.style.height = H+"px";
     ctx.setTransform(DPR,0,0,DPR,0,0);
     computeGeometry();
   }
   window.addEventListener("resize", resize);
+  window.addEventListener("orientationchange", ()=>setTimeout(resize,60));
 
   // ---------- 소리 ----------
   let actx=null;
@@ -243,10 +265,10 @@
 
   // ---------- 포탑 종류 ----------
   const TOWERS = {
-    arrow: { key:"arrow", name:"화살탑", color:"#7bd13e", cost:50,  range:0.20, rate:1.8, dmg:1, proj:"arrow",  upCost:[40,70],  desc:"빠른 단발" },
-    cannon:{ key:"cannon",name:"대포탑", color:"#9aa3b2", cost:100, range:0.18, rate:0.65,dmg:2, proj:"cannon", splash:0.075, upCost:[70,120], desc:"범위 공격" },
-    ice:   { key:"ice",   name:"얼음탑", color:"#5ec0ff", cost:80,  range:0.18, rate:1.0, dmg:1, proj:"ice",    slow:0.5, slowDur:1.6, upCost:[60,100], desc:"느리게 함" },
-    bolt:  { key:"bolt",  name:"번개탑", color:"#c98cff", cost:150, range:0.23, rate:1.1, dmg:3, proj:"bolt",   pierce:3, upCost:[110,180], desc:"꿰뚫기" }
+    arrow: { key:"arrow", name:"화살탑", color:"#7bd13e", cost:50,  range:0.20, rate:1.8, dmg:1, proj:"arrow",  upCost:[40,70,110,160],  desc:"빠른 단발" },
+    cannon:{ key:"cannon",name:"대포탑", color:"#9aa3b2", cost:100, range:0.18, rate:0.65,dmg:2, proj:"cannon", splash:0.075, upCost:[70,120,180,250], desc:"범위 공격" },
+    ice:   { key:"ice",   name:"얼음탑", color:"#5ec0ff", cost:80,  range:0.18, rate:1.0, dmg:1, proj:"ice",    slow:0.5, slowDur:1.6, upCost:[60,100,150,210], desc:"느리게 함" },
+    bolt:  { key:"bolt",  name:"번개탑", color:"#c98cff", cost:150, range:0.23, rate:1.1, dmg:3, proj:"bolt",   pierce:3, upCost:[110,180,260,360], desc:"꿰뚫기" }
   };
   const TOWER_ORDER = ["arrow","cannon","ice","bolt"];
 
@@ -267,13 +289,15 @@
   };
 
   // 글씨 주기 — 이 숫자만 바꾸면 빈도 조절 (5웨이브 = 약 3~4분, 보스 타이밍과 일치)
-  const WRITE_EVERY = 5;
+  const WRITE_EVERY = 2;   // 두 웨이브마다 글씨 관문
+  const BOSS_EVERY  = 5;   // 보스는 다섯 웨이브마다 (글씨와 독립)
   const STAGE_WAVES = 10;   // 한 스테이지 = 10웨이브
 
   // ---------- 경로 + 받침대 (정규화 0~1) ----------
+  // 세로 흐름 — 위에서 등장해 아래 성으로 내려오는 S자
   const PATH_N = [
-    [-0.06,0.24],[0.20,0.24],[0.20,0.66],[0.44,0.66],
-    [0.44,0.30],[0.68,0.30],[0.68,0.70],[0.865,0.70]
+    [0.18,-0.05],[0.18,0.17],[0.82,0.17],[0.82,0.35],
+    [0.18,0.35],[0.18,0.53],[0.82,0.53],[0.82,0.70],[0.5,0.70],[0.5,0.83]
   ];
   let PATH=[], SLOTS=[], segLen=[], totalLen=0, castle={x:0,y:0};
   let prevSlots=null;
@@ -303,12 +327,12 @@
     castle = { x:PATH_N[PATH_N.length-1][0]*W, y:PATH_N[PATH_N.length-1][1]*H };
     // 받침대 격자 — 경로/성을 피해 빈 잔디 전체에 촘촘히
     SLOTS=[];
-    const cols=9, rows=6;
-    const clear = Math.max(34, Math.min(W,H)*0.06)/2 + 26;   // 경로 반폭 + 여유
+    const cols=8, rows=10;
+    const clear = Math.max(28, Math.min(W,H)*0.05)/2 + 24;   // 경로 반폭 + 받침대 여유
     for(let r=0;r<rows;r++){
       for(let c=0;c<cols;c++){
-        const nx = 0.055 + c*(0.89/(cols-1));
-        const ny = 0.105 + r*(0.775/(rows-1));
+        const nx = 0.06 + c*(0.88/(cols-1));
+        const ny = 0.085 + r*(0.78/(rows-1));
         const x=nx*W, y=ny*H;
         if(distToPath(x,y) < clear) continue;                 // 경로 위/근처 제외
         if(Math.hypot(x-castle.x, y-castle.y) < 80) continue;  // 성 앞 제외
@@ -356,13 +380,13 @@
   function buildWave(w, st){
     const q=[];
     const tier = w + (st-1)*STAGE_WAVES;
-    const isBoss = (w % WRITE_EVERY === 0);
-    function push(type,n,gap){ for(let i=0;i<n;i++) q.push({type, gap:gap||cfg.spawnGap}); }
+    const isBoss = (w % BOSS_EVERY === 0);
+    function push(type,n,gap){ n=Math.round(n*1.3); for(let i=0;i<n;i++) q.push({type, gap:gap||cfg.spawnGap}); }
     if(isBoss){
       push("zombie", 4+Math.floor(tier/2), cfg.spawnGap*0.8);
       push("fast", 3+Math.floor(tier/3), cfg.spawnGap*0.7);
       if(tier>=5) push("shield", 2, cfg.spawnGap);
-      const bossN = Math.max(1, Math.floor(w/WRITE_EVERY) + (st-1));
+      const bossN = Math.max(1, Math.floor(w/BOSS_EVERY) + (st-1));
       for(let i=0;i<bossN;i++) q.push({type:"boss", gap:1.6});
     } else {
       push("zombie", 5+w, cfg.spawnGap);
@@ -400,7 +424,7 @@
     updateHud();
     setShopWaveBtn(false);
     sndWave();
-    toast("웨이브 "+wave+ ((wave%WRITE_EVERY===0)?" — 보스!":""));
+    toast("웨이브 "+wave+ ((wave%BOSS_EVERY===0)?" — 보스!":""));
   }
 
   function onWaveCleared(){
@@ -910,8 +934,15 @@
     if(up==null){ upBtn.classList.add("no"); upCost.textContent="최고"; }
     else { upBtn.classList.toggle("no", coin<up); upCost.textContent=up; }
     document.getElementById("mgSellCost").textContent="+"+sellValue(t);
-    manageEl.style.left=slot.x+"px"; manageEl.style.top=(slot.y-12)+"px";
     manageEl.classList.remove("hidden");
+    // 화면(세로 프레임) 안으로 위치 클램핑 — 좌/우 끝 포탑에서도 버튼이 안 잘리게
+    const pw=manageEl.offsetWidth, ph=manageEl.offsetHeight;
+    let lx = slot.x - pw/2;
+    lx = Math.max(6, Math.min(W - pw - 6, lx));
+    let ty = slot.y - ph - 16;           // 기본은 포탑 위
+    if(ty < 6) ty = slot.y + 26;         // 위 공간 없으면 포탑 아래
+    ty = Math.max(6, Math.min(H - ph - 6, ty));
+    manageEl.style.left=lx+"px"; manageEl.style.top=ty+"px";
   }
   function hideManage(){ manageEl.classList.add("hidden"); manageSlot=null; }
   document.getElementById("mgUp").addEventListener("click",()=>{
@@ -919,8 +950,23 @@
     if(up==null) return; if(coin<up){ shake(document.getElementById("mgUp")); sndHurt(); return; }
     coin-=up; t.level++; sndBuild(); updateHud(); openManage(manageSlot);
   });
+  let _sellPrev="play";
+  const sellConfirmEl=document.getElementById("sellConfirm");
   document.getElementById("mgSell").addEventListener("click",()=>{
-    if(!manageSlot)return; coin+=sellValue(manageSlot.tower); manageSlot.tower=null; sndDing(); updateHud(); hideManage();
+    if(!manageSlot)return;
+    document.getElementById("sellGain").textContent="+"+sellValue(manageSlot.tower)+" 동전";
+    manageEl.classList.add("hidden");
+    _sellPrev=state; if(state==="play"||state==="wait") state="pause";   // 결정하는 동안 잠깐 멈춤
+    sellConfirmEl.classList.remove("hidden");
+  });
+  document.getElementById("sellYes").addEventListener("click",()=>{
+    if(manageSlot){ coin+=sellValue(manageSlot.tower); manageSlot.tower=null; sndDing(); updateHud(); }
+    sellConfirmEl.classList.add("hidden"); manageSlot=null;
+    if(state==="pause"){ state=_sellPrev; lastTime=0; }
+  });
+  document.getElementById("sellNo").addEventListener("click",()=>{
+    sellConfirmEl.classList.add("hidden"); hideManage();
+    if(state==="pause"){ state=_sellPrev; lastTime=0; }
   });
   document.getElementById("mgClose").addEventListener("click", hideManage);
 
@@ -1026,7 +1072,11 @@
   function pickKoVoice(){
     if(!window.speechSynthesis) return;
     const vs=window.speechSynthesis.getVoices()||[];
-    koVoice = vs.find(v=>/ko(-|_)?KR/i.test(v.lang)) || vs.find(v=>/ko/i.test(v.lang)) || null;
+    const ko = vs.filter(v=>/ko(-|_)?KR/i.test(v.lang) || /ko/i.test(v.lang));
+    // 여자 목소리 우선 (이름/female 표시 기준, iOS 한국어 기본 Yuna 는 여성)
+    const female = ko.find(v=>/female|여성|yuna|유나|sora|소라|heami|nara/i.test(v.name))
+                 || ko.find(v=>!/male|남성|minsu|민수/i.test(v.name));
+    koVoice = female || ko[0] || null;
   }
   if(window.speechSynthesis){
     pickKoVoice();
@@ -1058,8 +1108,14 @@
     const w=pickWord(); writeWord=[...w]; writeIdx=0; writeCtxs=[]; writeMarked=[];
     const row=document.getElementById("wordRow"); row.innerHTML="";
     document.getElementById("writeTitle").textContent="성문에 \""+w+"\" 쓰기";
+    // 칸 크기 — 화면 폭에 맞춰 최대로 (글자 수만큼 가로로 채움)
+    const n=writeWord.length, gap=10;
+    let cellPx = Math.min((W - 24 - gap*(n-1))/n, H*0.34, 240);
+    cellPx = Math.max(64, cellPx);
+    row.style.gap = gap+"px";
     writeWord.forEach((ch,i)=>{
       const cell=document.createElement("div"); cell.className="wcell";
+      cell.style.width=cellPx+"px"; cell.style.height=cellPx+"px";
       const c=document.createElement("canvas"); cell.appendChild(c); row.appendChild(cell);
       writeMarked.push(false);
       setupCell(c, ch, i, cell);
